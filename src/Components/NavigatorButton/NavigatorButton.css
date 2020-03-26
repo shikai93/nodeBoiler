@@ -1,0 +1,13 @@
+.navBtn:hover{
+    background-color : #ff8c1a;
+    box-shadow: 2px 2px #804000;
+}
+.navBtn:focus{
+    background-color : #ff8c1a;
+    box-shadow: 2px 2px #804000;
+}
+.navBtn {
+    background-color : #ff8c1a;
+    color : white;
+    border-width : 0px;
+}
