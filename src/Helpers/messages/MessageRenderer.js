@@ -43,4 +43,25 @@ class Messages extends React.Component {
         )
     }
 }
-export { Messages, MessageProvider, MessageContext }
+function withMessages(Component) {
+    const C = props => {
+      const { wrappedComponentRef, ...remainingProps } = props;
+      return (
+        <MessageContext.Consumer>
+          {(messages,setMessages) => {
+                return (
+                <Component
+                    {...remainingProps}
+                    {...messages, setMessages}
+                    setMessages = {setMessages}
+                    ref={wrappedComponentRef}
+                />
+                );
+          }}
+        </MessageContext.Consumer>
+      );
+    };
+    C.WrappedComponent = Component;
+    return C;
+}
+export { Messages, MessageProvider, MessageContext, withMessages }

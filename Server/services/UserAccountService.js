@@ -92,7 +92,7 @@ class UserAccountService {
         const hmac = crypto.createHmac('sha256', SECRETPW);
         this.GetSaltAndPw(username,(values,error) => {
             if (error != null) {
-                callback(false,error)
+                callback(null,error)
             } else {
                 hmac.update(password + values.salt);
                 const hashed =  hmac.digest('hex')
@@ -101,7 +101,7 @@ class UserAccountService {
                     var token = this.GenerateToken()
                     callback({userId : values.id, token : token}, null)
                 } else {
-                    callback(false,"Invalid Password")
+                    callback(null,"Invalid Password")
                 }
             }
         }) 

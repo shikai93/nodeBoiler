@@ -1,20 +1,16 @@
 const axios = require('axios');
-
+axios.defaults.withCredentials = true;
 class Model {
     constructor() {
         this.apiEndPoint = "http://127.0.0.1:4001"
     }
     
     get(path, params, callback) {
-        const AuthStr = 'Bearer '.concat(localStorage.getItem("authenticationToken"));
         axios
         .get(
             this.apiEndPoint + path, 
             { 
                 params : params ,
-                headers : {
-                    'Authorization' : AuthStr
-                }
             })
         .then(function (res) {
             callback(res.data, null)
@@ -25,14 +21,12 @@ class Model {
         });
     }
     postReq(path, body, callback){
-        const AuthStr = 'Bearer '.concat(localStorage.getItem("authenticationToken"));
         axios.post(
             this.apiEndPoint + path,
             body,
             {
                 headers: {
                     'Content-Type' : 'application/json',
-                    'Authorization' : AuthStr
                 }
             })
         .then(function (response) {

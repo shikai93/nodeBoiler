@@ -5,14 +5,19 @@ class API {
         this.serviceManager = new ServiceManager()
         this.userAccountService = this.serviceManager.GetUserAccountService()
     }
-    VerifyJWT(req,callback) {
-        let token = req.headers['x-access-token'] || req.headers['authorization'];
-        if (token.startsWith('Bearer ')) {
-            // Remove Bearer from string
-            token = token.slice(7, token.length);
-        }
+    VerifyJWT(req,res,callback) {
+        let token = req.signedCookies['jwtToken']
         if (token) {
-           this.userAccountService.VerifyToken(token,callback)
+           this.userAccountService.VerifyToken(token,(decoded,err) => {
+                if (err != null) {
+                    callback(null,err)
+                } else {
+                    this.userAccountService.GenerateToken(decoded.accountId,(token,err) => {
+                        res.cookie('jwtToken',token,{ maxAge: 24 * 60 * 60 * 1000, httpOnly: true, signed : true})
+                        callback(decoded,null)
+                    })
+                }
+           })
         } else {
             callback(null,'Auth Token is missing')
         }

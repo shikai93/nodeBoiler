@@ -2,25 +2,29 @@ import React, { useState, useEffect } from "react"
 import Model from "../../Models/Model.js"
 const AuthContext = React.createContext()
 function AuthProvider(props) {
-    const [isAuthenticated, setAuthenticated] = useState({});
+    const [user, setUser] = useState({});
     useEffect(() => { 
         const api = new Model();
-        api.postReq('/token/verify',{
-            token : localStorage.getItem("authenticationToken")
-        },(values) =>{
+        api.postReq('/token/verify',{},(values) =>{
             if (values === null) {
-                setAuthenticated(false)
+                user.isAuthenticated = false
+                setUser(user)
                 return
             }
             if (values.success) {
-                setAuthenticated(true)
+                var newUser = values.value
+                newUser.isAuthenticated = true
+                setUser(newUser)
             } else {
-                setAuthenticated(false)
+                setUser({
+                    isAuthenticated : false
+                })
             }
         })
-    }, [setAuthenticated,isAuthenticated])
+    }, user.isAuthenticated)
+
     return (
-        <AuthContext.Provider value={{isAuthenticated, setAuthenticated}} {...props} >
+        <AuthContext.Provider value={{user, setUser}} {...props} >
             {props.children}
         </AuthContext.Provider>
     )
@@ -30,21 +34,64 @@ function authenticate(username, password, authManager, callback) {
     api.postReq('/login',{
         username: username,
         password : password
-    },(values) => {
+    },(values,err) => {
         if (values.success) {
             const val = values.value
-            authManager.setAuthenticated(true)
             localStorage.setItem("userId",val.userId)
-            localStorage.setItem("authenticationToken",val.token)
+            api.postReq('/token/verify',{
+                token : val.token
+            },(values) =>{
+                if (values === null) {
+                    callback(false)
+                    return
+                }
+                if (values.success) {
+                    var newUser = values.value
+                    newUser.isAuthenticated = true
+                    authManager.setUser(newUser)
+                } else {
+                    authManager.setUser({
+                        isAuthenticated : false
+                    })
+                }
+                callback(values.success)
+            })
         } else {
-            authManager.setAuthenticated(false)
+            authManager.setUser({
+                isAuthenticated : false
+            })
+            callback(values.success)
         }
-        callback(values.success)
     })
 }
-function logout() {
+function logout(authManager) {
     localStorage.removeItem('userId');
-    localStorage.removeItem('authenticationToken')
+    authManager.setUser({
+        isAuthenticated : false
+    })
 }
 const useAuth = () => React.useContext(AuthContext)
-export {AuthProvider, useAuth, AuthContext, authenticate, logout}
+
+function withAuth(Component) {
+    const C = props => {
+      const { wrappedComponentRef, ...remainingProps } = props;
+      return (
+        <AuthContext.Consumer>
+          {(user,setUser) => {
+                return (
+                <Component
+                    {...remainingProps}
+                    {...user, setUser}
+                    user = {user}
+                    ref={wrappedComponentRef}
+                />
+                );
+          }}
+        </AuthContext.Consumer>
+      );
+    };
+    C.WrappedComponent = Component;
+    return C;
+}
+  
+export {AuthProvider, useAuth, AuthContext, authenticate, logout, withAuth}

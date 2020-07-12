@@ -12,11 +12,11 @@ callback = (res,value,err) => {
   }
 }
 authorize = (res, req, callback)=>{
-  api.VerifyJWT(req,(token,error) => {
+  api.VerifyJWT(req, res,(token,error) => {
     if (error !== null) {
       res.send({ success: false, error : error }).status(500);
     } else {
-      callback(res,token,null);
+      callback(token,null);
     }
   })
 }
@@ -34,6 +34,9 @@ router.post("/login", (req, res) => {
     return
   }
   api.Login(username, password, (value, err) => {
+    if (value != null) {
+      res.cookie('jwtToken',value.token,{ maxAge: 24 * 60 * 60 * 1000, httpOnly: true, signed : true})
+    }
     callback(res,value,err)
   })
 })
@@ -44,8 +47,15 @@ router.post("/signup", (req, res) => {
     res.send({ success: false, error : "Missing Credentials" }).status(500);
     return
   }
-  api.Signup(username, password, (value, err) => {
-    callback(res,value,err)
+  api.Signup(username, password, (rtnValue, rtnErr) => {
+    if (rtnErr != null) {
+      callback(res,rtnValue,rtnErr)
+      return
+    }
+    api.Login(username, password, (value, err) => {
+      res.cookie('jwtToken',value.token,{ maxAge: 24 * 60 * 60 * 1000, httpOnly: true, signed : true})
+      callback(res,rtnValue,rtnErr)
+    })
   })
 })
 
