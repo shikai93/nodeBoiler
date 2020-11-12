@@ -4,22 +4,23 @@ const config = require('../config/config.js')
 "use strict";
 const USERTABLE = 'UserAccount'
 const SECRET  = config.secretJWT
-const SECRETPW  = config.secretPW
 class UserAccountService {
     constructor (sqlInterface) {
         this.sqlInterface = sqlInterface
+    }
+    IsAdmin(user) {
+        return user.adminId !== undefined && user.adminId !== null
     }
     GetUser(username, callback) {
         if (typeof(username) != "string" ) {
             callback (null)
         }
         this.sqlInterface.PerformQuery(
-            `SELECT * FROM ${USERTABLE} WHERE username=@user`,
-            [{ 
-                name : 'user',
-                type : sql.VarChar(255),
-                value : username
-            }],
+            `SELECT ua.accountId, ua.salt, ua.password, ua.username, u.firstName, u.lastName, u.email
+            FROM ${config.tables.USERACCOUNT} AS ua 
+            JOIN ${config.tables.USER} AS u ON u.accountId = ua.accountId
+            WHERE ua.username=?`,
+            [username],
             (recordset, error) => {
                 if (recordset.length === 0) {
                     callback(null)
@@ -29,13 +30,16 @@ class UserAccountService {
             }
         )
     }
+    GetUserByAccountId(accountId, callback) {
+        this.GetUserInfo(accountId, callback)
+    }
     GetSaltAndPw(username,callback) {
         if (typeof(username) != "string" ) {
             callback(null,"Invalid username submitted")
             return
         }
         this.sqlInterface.PerformQuery(
-            `SELECT salt, password, id FROM ${USERTABLE} WHERE username=?`,
+            `SELECT salt, password, accountId FROM ${USERTABLE} WHERE username=?`,
             [username],
             (recordset, error) => {
                 if (recordset.length === 0) {
@@ -46,68 +50,48 @@ class UserAccountService {
             }
         )
     }
-    GetSalt(accountId, callback) {
+    GetUserInfo(accountId,callback) {
         this.sqlInterface.PerformQuery(
-            `SELECT a.accountId, a.salt FROM ${USERTABLE} AS a 
-            WHERE accountId=?`,
+            `SELECT ua.accountId, ua.username , u.userId, u.email, u.firstName, u.lastName
+            FROM ${USERTABLE} AS ua
+            LEFT JOIN ${config.tables.USER} AS u ON u.accountId = ua.accountId
+            WHERE ua.accountId=?`,
             [accountId],
             (recordset, error) => {
-                if (recordset == null || recordset.length === 0) {
-                    callback(null, "No such user found!");
-                    return;
+                if (recordset.length === 0) {
+                    callback(null, "No such user found!")
+                    return
                 }
-                callback(recordset[0], null);
+                var user = {
+                    accountId : recordset[0].accountId,
+                    username : recordset[0].username,
+                    userId : recordset[0].userId,
+                    email : recordset[0].email,
+                    firstName : recordset[0].firstName,
+                    lastName : recordset[0].lastName,
+                }
+                callback(user, null)
             }
-        );
+        )
     }
-
-    GenerateToken() {
-        var token = jwt.sign({ project: 'EmpirecodeTutor'}, SECRET, { expiresIn: '1d' });
-        return token
+    GenerateSalt() {
+        return crypto.randomBytes(16).toString("hex")
     }
-
-    // API functions
-    SignUp(username, password, callback) {
-        // retrieve salt
-        const hmac = crypto.createHmac('sha256', SECRETPW);
-        var salt = this.GenSalt();
-        hmac.update(password + salt);
-        const hashed =  hmac.digest('hex');
-        this.GetUser(username,(user) => {
-            if (user !== null) {
-                callback (false,"User aleady exist")
+    GenerateToken(accountId, callback) {
+        this.GetUserInfo(accountId, (info,err) => {
+            if (err !== null) {
+                callback(null,err)
             } else {
-                this.sqlInterface.PerformQuery(
-                    `INSERT INTO UserAccount (username, password,salt) VALUES (?,?,?)`,
-                    [username,hashed,salt],
-                    (recordset, error) => {
-                        callback (true,null)
-                    }
-                )
+                Object.assign(info,{ 
+                    project: 'CareerSuperDrive',
+                    accountId: info.accountId,
+                })
+                var token = jwt.sign(info, SECRET, { expiresIn: '1d' });
+                callback(token,null)
             }
         })
     }
-    Login(username, password, callback) {
-        // retrieve salt
-        const hmac = crypto.createHmac('sha256', SECRETPW);
-        this.GetSaltAndPw(username,(values,error) => {
-            if (error != null) {
-                callback(null,error)
-            } else {
-                hmac.update(password + values.salt);
-                const hashed =  hmac.digest('hex')
-                if (values.password === hashed) {
-                    // generate token
-                    var token = this.GenerateToken()
-                    callback({userId : values.id, token : token}, null)
-                } else {
-                    callback(null,"Invalid Password")
-                }
-            }
-        }) 
-    }
     VerifyToken(token, callback) {
-        // get token from req headesr
         jwt.verify(token, SECRET, function(err, decoded) {
             if (err) {
                 if (err.name == "TokenExpiredError") {
@@ -116,13 +100,81 @@ class UserAccountService {
                     return callback(null,'Invalid Token')
                 }
             } else {
-                if (decoded.project == "EmpirecodeTutor") {
+                if (decoded.project == "CareerSuperDrive") {
                     return callback(decoded,null)
                 } else {
                     return callback(null,'Invalid Token')
                 }
             }
         });
+    }
+
+    // API functions
+    SignUp(username, password, callback) {
+        var salt = this.GenerateSalt();
+        crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+            if (err) {
+                callback(null,err)
+                return
+            }
+            const hashed =  derivedKey.toString('hex');
+            this.GetUser(username,(user) => {
+                if (user !== null) {
+                    callback (null,"User aleady exist")
+                } else {
+                    this.sqlInterface.PerformQuery(
+                        `INSERT INTO ${USERTABLE} (username, password,salt) VALUES (?,?,?)`,
+                        [username,hashed,salt],
+                        (recordset, error) => {
+                            callback (recordset.insertId,null)
+                        }
+                    )
+                }
+            })
+        });
+    }
+    Login(username, password, callback) {
+        this.GetSaltAndPw(username,(values,error) => {
+            if (error != null) {
+                callback(false,error)
+            } else {
+                crypto.scrypt(password, values.salt, 64, (err, derivedKey) => {
+                    const hashed =  derivedKey.toString('hex');
+                    if (values.password === hashed) {
+                        // generate token
+                        this.GenerateToken(values.accountId, (token,error) => {
+                            callback({accountId : values.accountId, token : token}, null)
+                        })
+                    } else {
+                        callback(false,"Invalid Password")
+                    }
+                })
+            }
+        }) 
+    }
+    UpdateCredentials(initalusername, newusername, newPW, callback) {
+        // retrieve salt
+        this.GetSaltAndPw(initalusername,(values,error) => {
+            if (error != null) {
+                callback(false,error)
+            } else {
+                crypto.scrypt(newPW, values.salt, 64, (err, derivedKey) => {
+                    const hashed =  derivedKey.toString('hex');
+                    this.sqlInterface.PerformQuery(
+                        `UPDATE ${USERTABLE} SET username=?,password=? WHERE accountId=?`,
+                        [newusername,hashed,values.accountId],
+                        (recordset, error) => {
+                            callback ({accountId : values.accountId},null)
+                        }
+                    )
+                })
+            }
+        }) 
+    }
+    UpdateUserName(username, accountId, callback) {
+        this.sqlInterface.PerformQuery(`UPDATE ${config.tables.USERACCOUNT} SET username=? WHERE accountId = ?`, [username, accountId], (rtn,err)=>{
+            callback(rtn,err)
+        })
     }
 }
 module.exports = UserAccountService;
