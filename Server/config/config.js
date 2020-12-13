@@ -11,4 +11,15 @@ module.exports = {
     tables : {
        
     },
+    awsS3 : {
+        "accessKeyId": process.env.s3_accesskey,
+        "secretAccessKey": process.env.s3_secretaccesskey,
+        "region":"ap-southeast-1"
+    },
+    awsEmail : {
+        "accessKeyId": process.env.ses_accesskey,
+        "secretAccessKey": process.env.ses_secretaccesskey,
+        "region":"ap-southeast-2"
+    },
+    s3Bucket : process.env.s3bucket,
 };
