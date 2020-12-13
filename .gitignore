@@ -2,5 +2,7 @@ node_modules/.cache
 node_modules
 
 Server/node_modules
-Server/config
+# Server/config
 
+.env
+Server/.env
