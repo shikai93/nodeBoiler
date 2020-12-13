@@ -4,60 +4,67 @@ const config = require('../../config/config.js')
 class SqlInterface {
     constructor () {
         this.config = {
-            server: config.sqlServer,
+            connectionLimit : 10,
+            host: config.sqlServer,
             database: config.sqlDb,
             port : config.sqlPort,
             user : config.sqlUser,
             password : config.sqlPassword,
             timezone: "Z"
         };
+        this.pool = sql.createPool(this.config);
+    }
+    ChangeDB() {
+        this.pool.end()
+        this.pool = sql.createPool(this.config);
     }
     ClearDB(callback) {
-        this.PerformQuery(
-            "DELETE FROM UserAccount WHERE id != 1", 
-            {}, () => {
+        var callsToMake = 0
+        var callsMade = 0
+        if (this.config.database !== 'test') {
             callback()
-        })
+            return
+        }
+        for( var key in config.tables) {
+            if (
+                config.tables[key] != 'tabletokeep'
+            ) {
+                callsToMake += 1
+                this.PerformQuery(
+                    `DELETE FROM ${config.tables[key]}`, 
+                    {}, () => {
+                        callsMade += 1
+                        if (callsMade == callsToMake) {
+                            callback()
+                        }
+                })
+            }
+        }
     }
     ConnectDB(callback) {
-        if (this.pool == undefined) {
-            var con = sql.createConnection(this.config);
-            con.connect(function(err) {
-                if (err) {
-                    console.log(err);
-                } else {
-                    this.pool = con;
-                    callback(con);
-                }
-            });
-        } else {
-            callback(this.pool);
-        }
+        callback(this.pool)
     }
 
     // inputs is an array
     // [value]
-    PerformQuery(queryString, inputs, callback) {
+    PerformQuery(queryString, inputs, callback, debug = false) {
         var options = {
             sql: queryString,
             values: inputs
         };
-        this.ConnectDB(function(con) {
-            var sql = con.query(options, inputs, function(err, results, fields) {
-                con.end();
-                this.pool = undefined;
-                if (callback == null) {
-                    return;
-                }
-                if (err) {
-                    // console.log(err);
-                    callback(null, err);
-                    return;
-                }
-                callback(results, null);
-            });
-            // console.log(sql.sql)
+        var sql = this.pool.query(options, inputs, (err, results, fields) => {
+            if (callback == null) {
+                return;
+            }
+            if (err) {
+                callback(null, err);
+                return;
+            }
+            callback(results, null);
         });
+        if (debug) {
+            console.log(sql.sql)
+        }
     }
 
     // inputs is an array
@@ -89,4 +96,5 @@ class SqlInterface {
         });
     }
 }
-module.exports = SqlInterface;
+var interface = new SqlInterface()
+module.exports = interface;
